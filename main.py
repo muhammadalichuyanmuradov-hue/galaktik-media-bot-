@@ -35,7 +35,7 @@ logger = logging.getLogger("ImperatorCore")
 
 # BU YERGA YANGI TOKEN VA YANGI URL'NI YOZING
 TOKEN = '8683327494:AAFeRlYxxdUpe3H0pLZNHJdfWRIPWIVUqj4' 
-APP_URL = 'YANGI_RENDER_MANZILINI_SHU_YERGA_QO_YING' 
+APP_URL = 'https://galaktik-media-bot.onrender.com' 
 
 TEMP_DIR = "imperator_storage"
 if not os.path.exists(TEMP_DIR):
