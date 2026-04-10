@@ -172,43 +172,59 @@ async def stats(m: types.Message):
 
 @dp.message()
 async def handle_request(m: types.Message):
+    # Agar xabar matn bo'lmasa yoki buyruq bo'lsa, to'xtatamiz
     if not m.text or m.text.startswith('/'): return
-    if m.text in ["🎵 Musiqa", "🎬 Video", "📊 Statistika", "ℹ️ Ma'lumot"]:
-        await m.answer("⌨️ Nomini yozing:")
+    
+    # Tugmalar uchun maxsus javoblar
+    if m.text == "🎵 Musiqa":
+        await m.answer("🎶 Qaysi qo'shiqni qidiramiz? Nomini yozing:")
+        return
+    elif m.text == "🎬 Video":
+        await m.answer("📽 Qaysi videoni qidiramiz? Nomini yozing (masalan: 'Uzbekistan video'):")
+        return
+    elif m.text == "ℹ️ Ma'lumot":
+        await m.answer("🤖 **Imperator Media Bot v7.0**\n\nBu bot YouTube va Soundcloud platformalaridan media yuklab beradi.\n\nEslatma: Video qidirish uchun so'rov oxiriga 'video' so'zini qo'shing.")
+        return
+    elif m.text == "📊 Statistika":
+        await m.answer(f"📈 **Holat:** Mukammal\n🕒 **Vaqt:** {datetime.datetime.now().strftime('%H:%M')}\n🛰 **Tizim:** 24/7 Uyg'oq")
         return
 
-    is_video = "video" in m.text.lower() or "klip" in m.text.lower()
+    # Video qidirish shartini aniqlash
+    video_keywords = ['video', 'klip', 'clip', 'mp4', 'kino']
+    is_video = any(word in m.text.lower() for word in video_keywords)
+    
     wait = await m.answer("🚀 **Galaktik qidiruv tizimi ishga tushdi...** ✨")
     
     try:
-        res = await engine.fetch_media(m.text, "video" if is_video else "audio")
+        # Qidiruv rejimini tanlaymiz
+        mode = "video" if is_video else "audio"
+        res = await engine.fetch_media(m.text, mode)
+        
         if not res:
             await wait.edit_text("😔 Hech narsa topilmadi. Iltimos, boshqa nom yozing.")
             return
 
-        if res['thumb']:
-            await m.answer_photo(res['thumb'], caption=f"✅ **Topildi:** {res['title']}\n📡 **Manba:** {res['source']}")
-
-        await wait.edit_text("📤 **Fayl yuborilmoqda...**")
+        await wait.edit_text("📤 **Fayl tayyorlanmoqda...**")
         file = FSInputFile(res['file'])
         
-        if is_video:
-            await m.answer_video(file, caption=f"🎬 {res['title']}")
+        if mode == "video":
+            await m.answer_video(file, caption=f"🎬 **Topildi:** {res['title']}\n📡 **Manba:** {res['source']}")
         else:
-            await m.answer_audio(file, caption=f"🎵 {res['title']}")
+            await m.answer_audio(file, caption=f"🎵 **Topildi:** {res['title']}\n📡 **Manba:** {res['source']}")
 
+        # Tozalash
         if os.path.exists(res['file']): os.remove(res['file'])
         await wait.delete()
-        await m.answer_sticker("CAACAgIAAxkBAAEL7ARl_LAVvV6F8uV6F8uV6F8uV6F8")
 
     except Exception as e:
-        logger.error(e)
-        await wait.edit_text("⚠️ Xatolik! Iltimos, birozdan so'ng qayta urining.")
+        print(f"Xato: {e}")
+        await wait.edit_text("⚠️ Xatolik yuz berdi! Fayl hajmi juda katta bo'lishi mumkin.")
 
+# Botni ishga tushirish
 async def main():
-    await guardian.start_server()
-    asyncio.create_task(guardian.anti_sleep_ping())
     await dp.start_polling(bot)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
+
