@@ -1,230 +1,145 @@
-# -*- coding: utf-8 -*-
-import asyncio
-import os
-import logging
-import random
-import time
-import datetime
-import shutil
-import json
-import re
-import sys
-import platform
-from typing import Optional, Dict, Any, List
-
+ import os, asyncio, datetime, logging
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import FSInputFile, KeyboardButton, ReplyKeyboardMarkup
-from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest
-
+from aiogram.types import FSInputFile, ReplyKeyboardMarkup, KeyboardButton, BotCommand
 import yt_dlp
 import aiohttp
-from aiohttp import web
 
-# =================================================================
-# MODULE 1: SYSTEM CORE CONFIGURATION (1-150 QATOR)
-# =================================================================
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - [%(levelname)s] - %(name)s - %(message)s"
+# --- KONFIGURATSIYA ---
+TOKEN = "8683327494:AAFeRlYxxdUpe3H0pLZNHJdfWRIPWIVUqj4"
+APP_URL = "https://galaktik-media-bot.onrender.com" # Masalan: https://galaktik-media-bot.onrender.com
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+logging.basicConfig(level=logging.INFO)
+
+# --- KLAVIATURA ---
+menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🎵 Musiqa"), KeyboardButton(text="🎬 Video")],
+        [KeyboardButton(text="📊 Statistika"), KeyboardButton(text="ℹ️ Ma'lumot")]
+    ],
+    resize_keyboard=True
 )
-logger = logging.getLogger("ImperatorCore")
 
-# BU YERGA YANGI TOKEN VA YANGI URL'NI YOZING
-TOKEN = '8683327494:AAFeRlYxxdUpe3H0pLZNHJdfWRIPWIVUqj4' 
-APP_URL = 'https://galaktik-media-bot.onrender.com' 
-
-TEMP_DIR = "imperator_storage"
-if not os.path.exists(TEMP_DIR):
-    os.makedirs(TEMP_DIR)
-
-# =================================================================
-# MODULE 2: REVOLUTIONARY MEDIA ENGINE (150-400 QATOR)
-# =================================================================
-class UltimateDownloader:
-    """YouTube cheklovlarini aylanib o'tuvchi va multi-platforma qidiruvchi tizim"""
-    
+# --- MEDIA YUKLOVCHI ---
+class ImperatorEngine:
     def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-            'Accept-Language': 'uz-UZ,uz;q=0.9,en-US;q=0.8,en;q=0.7',
-        }
+        self.path = "downloads"
+        if not os.path.exists(self.path): os.makedirs(self.path)
 
-    def get_ydl_opts(self, mode="audio"):
-        opts = {
+    async def download(self, query, is_video=False):
+        # Ayyorlik: Audio uchun Soundcloud, Video uchun YouTube qidiruvini majburlaymiz
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]' if is_video else 'bestaudio/best',
+            'outtmpl': f'{self.path}/%(id)s.%(ext)s',
             'noplaylist': True,
             'quiet': True,
-            'no_warnings': True,
-            'nocheckcertificate': True,
-            'geo_bypass': True,
-            'outtmpl': f'{TEMP_DIR}/%(id)s.%(ext)s',
-            'user_agent': self.headers['User-Agent'],
-            'referer': 'https://www.google.com/',
-            'http_headers': self.headers,
-            'socket_timeout': 30,
-            'retries': 5,
+            'default_search': 'ytsearch' if is_video else 'scsearch', 
         }
         
-        if mode == "audio":
-            opts['format'] = 'bestaudio/best'
-            opts['postprocessors'] = [{
-                'key': 'FFmpegExtractAudio',
-                'preferredcodec': 'mp3',
-                'preferredquality': '192',
-            }]
-        else:
-            opts['format'] = 'best[height<=480]/best'
-            
-        return opts
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = await asyncio.to_thread(ydl.extract_info, query, download=True)
+                if 'entries' in info: info = info['entries'][0]
+                return {
+                    'file': ydl.prepare_filename(info),
+                    'title': info.get('title', 'Noma\'lum'),
+                    'source': "YouTube" if is_video else "Soundcloud"
+                }
+        except Exception as e:
+            logging.error(f"Xato: {e}")
+            return None
 
-    async def fetch_media(self, query: str, mode: str = "audio"):
-        # Qidiruv iyerarxiyasi: Dailymotion -> SoundCloud -> YouTube
-        # Bu YouTube blokini aylanib o'tishning eng zo'r yo'li
-        search_engines = [
-            f"dmsearch1:{query}", 
-            f"scsearch1:{query}", 
-            f"ytsearch1:{query}"
-        ]
-        
-        for engine in search_engines:
-            try:
-                logger.info(f"Imperator tizimi {engine} orqali qidirmoqda...")
-                with yt_dlp.YoutubeDL(self.get_ydl_opts(mode)) as ydl:
-                    loop = asyncio.get_event_loop()
-                    info = await loop.run_in_executor(None, lambda: ydl.extract_info(engine, download=True))
-                    
-                    if not info or 'entries' not in info or not info['entries']:
-                        continue
-                        
-                    data = info['entries'][0]
-                    path = ydl.prepare_filename(data)
-                    
-                    if mode == "audio" and not path.endswith(".mp3"):
-                        path = path.rsplit('.', 1)[0] + ".mp3"
-                        
-                    return {
-                        "file": path,
-                        "title": data.get("title", "Galaktik Media"),
-                        "thumb": data.get("thumbnail"),
-                        "artist": data.get("uploader", "Noma'lum"),
-                        "source": data.get("extractor_key")
-                    }
-            except Exception as e:
-                logger.error(f"Engine Error ({engine}): {e}")
-                continue
-        return None
+engine = ImperatorEngine()
 
-# =================================================================
-# MODULE 3: GUARDIAN ANTI-SLEEP (400-550 QATOR)
-# =================================================================
-class ServerGuardian:
-    """Render serverni har doim sergak ushlab turuvchi klass"""
-    def __init__(self, url):
-        self.url = url
-        self.app = web.Application()
-        self.app.router.add_get("/", lambda r: web.Response(text="Imperator Online"))
+# --- ANTI-SLEEP (UYQUGA QARSHI) ---
+async def keep_alive():
+    """Serverni har 10 daqiqada uyg'otib turadi"""
+    while True:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(APP_URL) as response:
+                    logging.info(f"Anti-Sleep: Server uyg'oq {response.status}")
+        except: pass
+        await asyncio.sleep(600) # 10 daqiqa
 
-    async def start_server(self):
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        await web.TCPSite(runner, '0.0.0.0', int(os.environ.get("PORT", 10000))).start()
-
-    async def anti_sleep_ping(self):
-        await asyncio.sleep(20)
-        while True:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(self.url) as r:
-                        logger.info(f"Guardian Ping: {r.status}")
-            except: pass
-            await asyncio.sleep(300)
-
-# =================================================================
-# MODULE 4: BOT BRAIN & UI (550-800 QATOR)
-# =================================================================
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.MARKDOWN))
-dp = Dispatcher()
-engine = UltimateDownloader()
-guardian = ServerGuardian(APP_URL)
-
-def main_menu():
-    kb = ReplyKeyboardBuilder()
-    kb.row(KeyboardButton(text="🎵 Musiqa"), KeyboardButton(text="🎬 Video"))
-    kb.row(KeyboardButton(text="📊 Statistika"), KeyboardButton(text="ℹ️ Ma'lumot"))
-    return kb.as_markup(resize_keyboard=True)
-
+# --- BUYRUQLAR ---
 @dp.message(Command("start"))
 async def start(m: types.Message):
+    # Tanishuv va tashqi ko'rinish
+    await m.answer_sticker("CAACAgIAAxkBAAEL_") # Stiker ID
     await m.answer(
-        f"👑 **Salom, {m.from_user.first_name}!**\n\n"
-        "Siz mutlaqo yangi, 800 qatorlik **Imperator V7** tizimiga ulangansiz.\n"
-        "Men endi uxlab qolmayman va barcha bloklarni yanchib tashlayman! 🛡",
-        reply_markup=main_menu()
+        f"🌟 **Assalomu alaykum, {m.from_user.first_name}!**\n\n"
+        "Men sizning professional media yordamchingizman. 🤖\n\n"
+        "🎬 **Video** — YouTube'dan (Eng yaxshi sifat).\n"
+        "🎵 **Musiqa** — Soundcloud va boshqalardan.\n\n"
+        "Marhamat, quyidagi tugmalardan foydalaning!",
+        reply_markup=menu
     )
 
-@dp.message(F.text == "📊 Statistika")
-async def stats(m: types.Message):
-    await m.answer(f"📈 **Holat:** Mukammal\n🕒 **Vaqt:** {datetime.datetime.now().strftime('%H:%M')}\n🛰 **Tizim:** 24/7 Uyg'oq")
+@dp.message(Command("video"))
+async def v_cmd(m: types.Message):
+    await m.answer("🎬 **Video qidirish rejimi.**\nNomini yoki YouTube linkini yuboring:")
 
+@dp.message(Command("musiqa"))
+async def m_cmd(m: types.Message):
+    await m.answer("🎵 **Musiqa qidirish rejimi.**\nNomini yoki Soundcloud linkini yuboring:")
+
+# --- ASOSIY MANTIQ ---
 @dp.message()
-async def handle_request(m: types.Message):
-    # Agar xabar matn bo'lmasa yoki buyruq bo'lsa, to'xtatamiz
+async def main_handler(m: types.Message):
     if not m.text or m.text.startswith('/'): return
     
-    # Tugmalar uchun maxsus javoblar
-    if m.text == "🎵 Musiqa":
-        await m.answer("🎶 Qaysi qo'shiqni qidiramiz? Nomini yozing:")
-        return
-    elif m.text == "🎬 Video":
-        await m.answer("📽 Qaysi videoni qidiramiz? Nomini yozing (masalan: 'Uzbekistan video'):")
+    if m.text == "📊 Statistika":
+        await m.answer(f"📈 **Holat:** Online\n🕒 **Vaqt:** {datetime.datetime.now().strftime('%H:%M')}\n🛰 **Tizim:** 24/7 Uyg'oq")
         return
     elif m.text == "ℹ️ Ma'lumot":
-        await m.answer("🤖 **Imperator Media Bot v7.0**\n\nBu bot YouTube va Soundcloud platformalaridan media yuklab beradi.\n\nEslatma: Video qidirish uchun so'rov oxiriga 'video' so'zini qo'shing.")
-        return
-    elif m.text == "📊 Statistika":
-        await m.answer(f"📈 **Holat:** Mukammal\n🕒 **Vaqt:** {datetime.datetime.now().strftime('%H:%M')}\n🛰 **Tizim:** 24/7 Uyg'oq")
+        await m.answer("🤖 **Imperator AI v10.0**\nMedia yuklash bo'yicha eng aqlli tizim.")
         return
 
-    # Video qidirish shartini aniqlash
-    video_keywords = ['video', 'klip', 'clip', 'mp4', 'kino']
-    is_video = any(word in m.text.lower() for word in video_keywords)
+    # Video yoki Musiqa ekanligini aniqlash
+    is_video = any(x in m.text.lower() for x in ['video', 'klip', 'clip', 'mp4', 'kino']) or m.text == "🎬 Video"
     
-    wait = await m.answer("🚀 **Galaktik qidiruv tizimi ishga tushdi...** ✨")
+    if m.text in ["🎵 Musiqa", "🎬 Video"]:
+        await m.answer(f"Tushunarli! Endi {m.text} nomini yozing:")
+        return
+
+    wait = await m.answer("🔍 **Galaktik qidiruv ketmoqda...**")
+    res = await engine.download(m.text, is_video)
+
+    if not res:
+        await wait.edit_text("❌ Kechirasiz, hech narsa topilmadi. Boshqa nom yozing.")
+        return
+
+    await wait.edit_text("📤 **Fayl yuborilmoqda...**")
+    file = FSInputFile(res['file'])
     
     try:
-        # Qidiruv rejimini tanlaymiz
-        mode = "video" if is_video else "audio"
-        res = await engine.fetch_media(m.text, mode)
-        
-        if not res:
-            await wait.edit_text("😔 Hech narsa topilmadi. Iltimos, boshqa nom yozing.")
-            return
-
-        await wait.edit_text("📤 **Fayl tayyorlanmoqda...**")
-        file = FSInputFile(res['file'])
-        
-        if mode == "video":
-            await m.answer_video(file, caption=f"🎬 **Topildi:** {res['title']}\n📡 **Manba:** {res['source']}")
+        if is_video:
+            await m.answer_video(file, caption=f"🎬 {res['title']}\n📡 Manba: YouTube")
         else:
-            await m.answer_audio(file, caption=f"🎵 **Topildi:** {res['title']}\n📡 **Manba:** {res['source']}")
-
-        # Tozalash
+            await m.answer_audio(file, caption=f"🎵 {res['title']}\n📡 Manba: Soundcloud")
+        
+        await m.answer("😊 Raxmat! Xizmatingizga tayyorman ✨")
+    except Exception as e:
+        await m.answer("⚠️ Fayl yuborishda xatolik (Hajmi 50MB dan kattadir).")
+    finally:
         if os.path.exists(res['file']): os.remove(res['file'])
         await wait.delete()
 
-    except Exception as e:
-        print(f"Xato: {e}")
-        await wait.edit_text("⚠️ Xatolik yuz berdi! Fayl hajmi juda katta bo'lishi mumkin.")
-
-# Botni ishga tushirish
+# --- ISHGA TUSHIRISH ---
 async def main():
+    # Uyquga qarshi vazifa
+    asyncio.create_task(keep_alive())
+    
+    # Chap burchak menyusi
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Botni yangilash"),
+        BotCommand(command="video", description="Video yuklash"),
+        BotCommand(command="musiqa", description="Musiqa yuklash")
+    ])
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
-
